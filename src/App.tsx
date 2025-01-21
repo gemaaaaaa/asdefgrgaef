@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend
 } from 'chart.js';
-import { Activity, BarChart2, Table as TableIcon, Settings, Download } from 'lucide-react';
+import { Activity, BarChart2, Table as TableIcon, Settings, Download, X } from 'lucide-react';
 
 // Register ChartJS components
 ChartJS.register(
@@ -93,6 +93,25 @@ const phaseTData = [
   { Tegangan: 213, Time: "6:49 AM UTC +7" }
 ];
 
+// Additional metrics data (sample data following similar pattern)
+const generateMetricData = (baseValue: number, variance: number, times: string[]) => {
+  return times.map((time) => ({
+    value: baseValue + (Math.random() * variance * 2 - variance),
+    Time: time
+  }));
+};
+
+const getMetricsData = (phaseData: typeof phaseRData) => {
+  const times = phaseData.map(item => item.Time);
+  return {
+    current: generateMetricData(10, 2, times),      // Amps, around 10A ±2
+    power: generateMetricData(2200, 200, times),    // Watts, around 2200W ±200
+    energy: generateMetricData(1.5, 0.3, times),    // kWh, around 1.5 ±0.3
+    frequency: generateMetricData(50, 0.5, times),  // Hz, around 50Hz ±0.5
+    powerFactor: generateMetricData(0.92, 0.08, times) // Range 0.8-1
+  };
+};
+
 // Common options for all charts
 const commonOptions = {
   responsive: true,
@@ -111,60 +130,189 @@ const commonOptions = {
   }
 };
 
+// Specific options for different metrics
+const metricOptions = {
+  current: {
+    ...commonOptions,
+    scales: {
+      y: {
+        min: 0,
+        max: 20,
+        ticks: { stepSize: 2 }
+      }
+    }
+  },
+  power: {
+    ...commonOptions,
+    scales: {
+      y: {
+        min: 1500,
+        max: 3000,
+        ticks: { stepSize: 300 }
+      }
+    }
+  },
+  energy: {
+    ...commonOptions,
+    scales: {
+      y: {
+        min: 0,
+        max: 3,
+        ticks: { stepSize: 0.5 }
+      }
+    }
+  },
+  frequency: {
+    ...commonOptions,
+    scales: {
+      y: {
+        min: 48,
+        max: 52,
+        ticks: { stepSize: 0.5 }
+      }
+    }
+  },
+  powerFactor: {
+    ...commonOptions,
+    scales: {
+      y: {
+        min: 0.8,
+        max: 1,
+        ticks: { stepSize: 0.05 }
+      }
+    }
+  }
+};
+
+// Utility function to create chart data
+const createChartData = (data: any[], label: string, color: string) => ({
+  labels: data.map(item => item.Time),
+  datasets: [{
+    label,
+    data: data.map(item => typeof item.Tegangan !== 'undefined' ? item.Tegangan : item.value),
+    borderColor: color,
+    backgroundColor: color,
+    tension: 0.4,
+  }]
+});
+
 type MenuType = 'graph' | 'table' | 'settings';
+type PhaseType = 'R' | 'S' | 'T' | null;
+
+interface ModalProps {
+  phase: PhaseType;
+  onClose: () => void;
+  data: typeof phaseRData;
+  color: string;
+}
+
+const PhaseDetailModal: React.FC<ModalProps> = ({ phase, onClose, data, color }) => {
+  if (!phase) return null;
+
+  const metrics = getMetricsData(data);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-800">Detail Fasa {phase}</h2>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Voltage Graph */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Tegangan (V)</h3>
+              <div className="h-[300px]">
+                <Line
+                  data={createChartData(data, 'Voltage (V)', color)}
+                  options={commonOptions}
+                />
+              </div>
+            </div>
+
+            {/* Current Graph */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Arus (A)</h3>
+              <div className="h-[300px]">
+                <Line
+                  data={createChartData(metrics.current, 'Current (A)', color)}
+                  options={metricOptions.current}
+                />
+              </div>
+            </div>
+
+            {/* Power Graph */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Daya (W)</h3>
+              <div className="h-[300px]">
+                <Line
+                  data={createChartData(metrics.power, 'Power (W)', color)}
+                  options={metricOptions.power}
+                />
+              </div>
+            </div>
+
+            {/* Energy Usage Graph */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Penggunaan Daya (kWh)</h3>
+              <div className="h-[300px]">
+                <Line
+                  data={createChartData(metrics.energy, 'Energy (kWh)', color)}
+                  options={metricOptions.energy}
+                />
+              </div>
+            </div>
+
+            {/* Frequency Graph */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Frekuensi (Hz)</h3>
+              <div className="h-[300px]">
+                <Line
+                  data={createChartData(metrics.frequency, 'Frequency (Hz)', color)}
+                  options={metricOptions.frequency}
+                />
+              </div>
+            </div>
+
+            {/* Power Factor Graph */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Faktor Daya</h3>
+              <div className="h-[300px]">
+                <Line
+                  data={createChartData(metrics.powerFactor, 'Power Factor', color)}
+                  options={metricOptions.powerFactor}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 function App() {
   const [activeMenu, setActiveMenu] = useState<MenuType>('graph');
-
-  const chartData = (data: typeof phaseRData, label: string, color: string) => ({
-    labels: data.map(item => item.Time),
-    datasets: [
-      {
-        label,
-        data: data.map(item => item.Tegangan),
-        borderColor: color,
-        backgroundColor: color,
-        tension: 0.4,
-      },
-    ],
-  });
-
-  const downloadCSV = () => {
-    const headers = ['Time', 'Phase R (V)', 'Phase S (V)', 'Phase T (V)'];
-    const maxLength = Math.max(phaseRData.length, phaseSData.length, phaseTData.length);
-    const csvData = [];
-
-    for (let i = 0; i < maxLength; i++) {
-      const row = [
-        phaseRData[i]?.Time || '',
-        phaseRData[i]?.Tegangan || '',
-        phaseSData[i]?.Time || '',
-        phaseSData[i]?.Tegangan || '',
-        phaseTData[i]?.Time || '',
-        phaseTData[i]?.Tegangan || '',
-      ];
-      csvData.push(row.join(','));
-    }
-    
-    const csvContent = [headers.join(','), ...csvData].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'voltage_data.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const [selectedPhase, setSelectedPhase] = useState<PhaseType>(null);
 
   const renderGraphView = () => (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {/* Phase R */}
-      <div className="bg-white p-4 rounded-lg shadow-md">
+      <div 
+        className="bg-white p-4 rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+        onClick={() => setSelectedPhase('R')}
+      >
         <h2 className="text-lg font-semibold mb-4 text-gray-700">Fasa R</h2>
         <div className="h-[300px]">
           <Line 
-            data={chartData(phaseRData, 'Voltage (V)', '#ef4444')} 
+            data={createChartData(phaseRData, 'Voltage (V)', '#ef4444')} 
             options={{
               ...commonOptions,
               plugins: {
@@ -179,11 +327,14 @@ function App() {
       </div>
 
       {/* Phase S */}
-      <div className="bg-white p-4 rounded-lg shadow-md">
+      <div 
+        className="bg-white p-4 rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+        onClick={() => setSelectedPhase('S')}
+      >
         <h2 className="text-lg font-semibold mb-4 text-gray-700">Fasa S</h2>
         <div className="h-[300px]">
           <Line 
-            data={chartData(phaseSData, 'Voltage (V)', '#3b82f6')} 
+            data={createChartData(phaseSData, 'Voltage (V)', '#3b82f6')} 
             options={{
               ...commonOptions,
               plugins: {
@@ -198,11 +349,14 @@ function App() {
       </div>
 
       {/* Phase T */}
-      <div className="bg-white p-4 rounded-lg shadow-md">
+      <div 
+        className="bg-white p-4 rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+        onClick={() => setSelectedPhase('T')}
+      >
         <h2 className="text-lg font-semibold mb-4 text-gray-700">Fasa T</h2>
         <div className="h-[300px]">
           <Line 
-            data={chartData(phaseTData, 'Voltage (V)', '#22c55e')} 
+            data={createChartData(phaseTData, 'Voltage (V)', '#22c55e')} 
             options={{
               ...commonOptions,
               plugins: {
@@ -215,6 +369,16 @@ function App() {
           />
         </div>
       </div>
+
+      {/* Phase Detail Modal */}
+      {selectedPhase && (
+        <PhaseDetailModal
+          phase={selectedPhase}
+          onClose={() => setSelectedPhase(null)}
+          data={selectedPhase === 'R' ? phaseRData : selectedPhase === 'S' ? phaseSData : phaseTData}
+          color={selectedPhase === 'R' ? '#ef4444' : selectedPhase === 'S' ? '#3b82f6' : '#22c55e'}
+        />
+      )}
     </div>
   );
 
@@ -270,6 +434,34 @@ function App() {
       </div>
     </div>
   );
+
+  const downloadCSV = () => {
+    const headers = ['Time', 'Phase R (V)', 'Phase S (V)', 'Phase T (V)'];
+    const maxLength = Math.max(phaseRData.length, phaseSData.length, phaseTData.length);
+    const csvData = [];
+
+    for (let i = 0; i < maxLength; i++) {
+      const row = [
+        phaseRData[i]?.Time || '',
+        phaseRData[i]?.Tegangan || '',
+        phaseSData[i]?.Time || '',
+        phaseSData[i]?.Tegangan || '',
+        phaseTData[i]?.Time || '',
+        phaseTData[i]?.Tegangan || '',
+      ];
+      csvData.push(row.join(','));
+    }
+    
+    const csvContent = [headers.join(','), ...csvData].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'voltage_data.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="min-h-screen bg-gray-100">
